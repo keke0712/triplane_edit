@@ -1,3 +1,24 @@
 work_dirs/
 __pycache__/
 checkpoints/
+# weights / data / outputs
+checkpoints/
+outputs/
+results/
+*.pkl
+*.pt
+*.pth
+
+# torch extensions build cache
+.torch_extensions/
+
+# python cache
+__pycache__/
+*.pyc
+
+# windows build artifacts
+*.pyd
+*.lib
+*.exp
+*.obj
+build/

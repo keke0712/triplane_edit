@@ -9,7 +9,7 @@
 Borrowed from implementation from [Swin-Transformer](https://github.com/microsoft/Swin-Transformer) with modifications
 """
 
-
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -158,7 +158,8 @@ class WindowAttention(nn.Module):
 
         # cosine attention
         attn = (F.normalize(q, dim=-1) @ F.normalize(k, dim=-1).transpose(-2, -1))
-        logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01))).exp()
+        max_logit = math.log(1.0 / 0.01)  # 纯 float，不产生 CPU tensor
+        logit_scale = torch.clamp(self.logit_scale, max=max_logit).exp()
         attn = attn * logit_scale
 
         relative_position_bias_table = self.cpb_mlp(self.relative_coords_table).view(-1, self.num_heads)

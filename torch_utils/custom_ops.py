@@ -23,7 +23,7 @@ from torch.utils.file_baton import FileBaton
 #----------------------------------------------------------------------------
 # Global options.
 
-verbosity = 'brief' # Verbosity level: 'none', 'brief', 'full'
+verbosity = 'full' # Verbosity level: 'none', 'brief', 'full'
 
 #----------------------------------------------------------------------------
 # Internal helper funcs.
@@ -135,13 +135,20 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
 
             # Compile.
             cached_sources = [os.path.join(cached_build_dir, os.path.basename(fname)) for fname in sources]
-            torch.utils.cpp_extension.load(name=module_name, build_directory=cached_build_dir,
-                verbose=verbose_build, sources=cached_sources, **build_kwargs)
+            module = torch.utils.cpp_extension.load(
+                name=module_name,
+                build_directory=cached_build_dir,
+                verbose=verbose_build,
+                sources=cached_sources,
+                **build_kwargs
+            )
         else:
-            torch.utils.cpp_extension.load(name=module_name, verbose=verbose_build, sources=sources, **build_kwargs)
-
-        # Load.
-        module = importlib.import_module(module_name)
+            module = torch.utils.cpp_extension.load(
+            name=module_name,
+            verbose=verbose_build,
+            sources=sources,
+            **build_kwargs
+        )
 
     except:
         if verbosity == 'brief':
