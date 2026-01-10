@@ -1,0 +1,6 @@
+name: triplane_edit310
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+prefix: C:\Users\kkcat\miniconda3\envs\triplane_edit310
