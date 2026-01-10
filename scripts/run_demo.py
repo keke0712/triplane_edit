@@ -8,6 +8,7 @@ def add_paths(repo_root: str):
     fp = os.path.join(repo_root, "face_parsing_pytorch")
     if os.path.isdir(fp) and fp not in sys.path:
         sys.path.insert(0, fp)
+    os.environ.setdefault("TORCH_EXTENSIONS_DIR", os.path.join(repo_root, ".torch_extensions"))
 
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
