@@ -11,6 +11,16 @@ repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, repo_root)
 sys.path.insert(0, os.path.join(repo_root, "face_parsing_pytorch"))
 
+def add_paths(repo_root: str):
+    # 让 "import configs / training / ..." 能找到
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    # 让 face_parsing_pytorch 里 "from resnet import ..." 这种写法能找到
+    fp = os.path.join(repo_root, "face_parsing_pytorch")
+    if os.path.isdir(fp) and fp not in sys.path:
+        sys.path.insert(0, fp)
+    os.environ.setdefault("TORCH_EXTENSIONS_DIR", os.path.join(repo_root, ".torch_extensions"))
+
 
 def which(cmd):
     return shutil.which(cmd) or ""
