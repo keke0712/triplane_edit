@@ -46,6 +46,7 @@ conda activate triplane_edit310
 安装依赖（按仓库提供的 requirements / instructions）：
 
 ```bash
+pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
 pip install -r requirements.txt
 ```
 
@@ -79,6 +80,8 @@ checkpoints/
   encoder_FFHQ_finetuned.pt
   afa_FFHQ.pt
   79999_iter.pth
+  encoder_FFHQ.pt
+  model_ir_se50.pth
 ```
 
 检查：
