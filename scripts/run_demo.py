@@ -25,6 +25,10 @@ def main():
     ap.add_argument("--runtime_optim", action="store_true")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--outdir", default="out")
+    ap.add_argument("--mask_smooth", action="store_true", help="smooth edit mask")
+    ap.add_argument("--mask_smooth_ksize", type=int, default=7, help="kernel size (odd)")
+    ap.add_argument("--mask_smooth_iters", type=int, default=1, help="repeat times")
+
     args = ap.parse_args()
 
     parser = get_parser()
@@ -33,6 +37,9 @@ def main():
     # 覆盖常用参数
     opts.device = args.device
     opts.outdir = args.outdir
+    setattr(opts, "mask_smooth", args.mask_smooth)
+    setattr(opts, "mask_smooth_ksize", args.mask_smooth_ksize)
+    setattr(opts, "mask_smooth_iters", args.mask_smooth_iters)
 
     pipe = TriplaneEditingPipeline(opts=opts, device=opts.device, outdir=opts.outdir)
     pipe.edit_demo(
