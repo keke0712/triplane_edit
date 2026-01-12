@@ -77,6 +77,7 @@ conda activate triplane_edit310
 ```
 checkpoints/
   ffhqrebalanced512-128.pkl
+  encoder_FFHQ.pt
   encoder_FFHQ_finetuned.pt
   afa_FFHQ.pt
   79999_iter.pth
@@ -113,6 +114,12 @@ python -m scripts.env_check
 
 ```bash
 python scripts/run_demo.py --input_base_dir example --src 79.png --dst 40.png --label eyes --outdir out
+```
+
+实例：`79.png -> 40.png`编辑`eyes,brows`：
+
+```bash
+python scripts/run_demo.py --input_base_dir example --src 79.png --dst 40.png --label eyes,brows --outdir out
 ```
 
 如果你要启用 runtime optimization：

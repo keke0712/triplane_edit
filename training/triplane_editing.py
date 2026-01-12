@@ -102,10 +102,16 @@ class TriplaneEditingPipeline:
     def create_2d_roi_mask(img_rec, roi_channel, masking_net):    
         parsing = masking_net(img_rec)[0]
         parsing = parsing.squeeze(0).argmax(0)
-        roi_mask = torch.zeros_like(parsing).float()
+        if isinstance(roi_channel, int):
+            roi_channel = [roi_channel]
+        roi_mask = torch.zeros_like(parsing, dtype=torch.float32)
         for ch in roi_channel:
             roi_mask[parsing==ch] = 1.0
         rec_roi_removed = img_rec*roi_mask
+        if not hasattr(masking_net, "_roi_debug_printed"):
+            print("[ROI DEBUG] roi_channel =", roi_channel,
+              "unique_parsing =", torch.unique(parsing).detach().cpu().tolist())
+            masking_net._roi_debug_printed = True
         return roi_mask
 
     @staticmethod
@@ -161,6 +167,14 @@ class TriplaneEditingPipeline:
             rec = rec_list['image']
             rec_triplane = rec_list['planes']
             roi_mask = self.create_2d_roi_mask(img_rec=rec, roi_channel=roi_channel, masking_net=masking_net)
+            if idx == 0:  # 只在第一个 pose 打印/保存一次
+                print("[ROI DEBUG] roi_channel =", roi_channel,
+                    "roi_sum =", float(roi_mask.sum()),
+                    "roi_minmax =", float(roi_mask.min()), float(roi_mask.max()))
+                torchvision.utils.save_image(
+                    roi_mask[None, None],  # (1,1,H,W)
+                    os.path.join(self.outdir, f"roi2d_ch{roi_channel}.png")
+                )
             grad = torch.autograd.grad(outputs=rec, inputs=rec_triplane, grad_outputs=roi_mask.unsqueeze(0).repeat(1,3,1,1))[0]            
             grad_list.append(grad)
 
@@ -268,7 +282,29 @@ class TriplaneEditingPipeline:
     def create_w_tp_from_img(self, img, img_512, c, E1, E2):
         w, t = self.forward_encoder_allstages(x=img, x_512=img_512, c=c, E1=E1, E2=E2)
         return w, t
-    
+    def blur_tp_mask(self, tp_mask, ksize=7, iters=1):
+        """
+        tp_mask: (1, 3, 32, 256, 256), values in [0,1]
+        return: same shape, soft mask in [0,1]
+        """
+        k = int(ksize)
+        if k < 3:
+            return tp_mask.float()
+        if k % 2 == 0:
+            k += 1
+        iters = max(int(iters), 1)
+
+        # 经验 sigma（不用新增命令行参数也能跑）
+        sigma = 0.3 * ((k - 1) * 0.5 - 1) + 0.8
+
+        blur = torchvision.transforms.GaussianBlur(k, sigma=(sigma, sigma))
+
+        x = tp_mask.float().view(1, 96, 256, 256)  # (1, 3*32, H, W)
+        for _ in range(iters):
+            x = blur(x)
+        x = x.clamp(0.0, 1.0)
+        return x.view(1, 3, 32, 256, 256)
+
     def create_dilated_eroded_tp_masks(self, tp_mask, blur_k_size=9, morph_k_size=11, std_devs=(2.0,2.0)):
         blur = torchvision.transforms.GaussianBlur(blur_k_size, sigma=std_devs)
         dilated_tp_mask = blur(F.max_pool2d(tp_mask.view(1,96,256,256), kernel_size=morph_k_size, stride=1, padding=(morph_k_size - 1) // 2)).view(1,3,32,256,256)
@@ -298,19 +334,38 @@ class TriplaneEditingPipeline:
             dst_tp_roi = self.postprocess_tp_mask(tp_grad=dst_tp_roi, mean_seperation=True, binarize=True)
 
         if invert_src_mask:
-            src_tp_roi = 1-src_tp_roi
-        if invert_dst_mask:
-            dst_tp_roi = 1-dst_tp_roi
+            src_tp_roi = 1 - src_tp_roi
+        if use_dst_mask_in_src and invert_dst_mask:
+            dst_tp_roi = 1 - dst_tp_roi
 
-        t_mask_src = src_tp_roi*dst_tp_roi if use_dst_mask_in_src else src_tp_roi
-        t_mask_dst = 1-t_mask_src
+        # 二值 mask（保留用于返回/后续形态学）
+        t_mask_src = src_tp_roi * dst_tp_roi if use_dst_mask_in_src else src_tp_roi
+        t_mask_dst = 1 - t_mask_src
 
+        # ✅ 仅用于融合的 soft mask（不影响返回的二值 mask）
+        t_mask_src_fuse = t_mask_src
+        t_mask_dst_fuse = t_mask_dst
+
+        if getattr(self.opts, "mask_smooth", False) and (w_guidance_dir is None):
+            t_mask_src_fuse = self.blur_tp_mask(
+                t_mask_src_fuse,
+                ksize=getattr(self.opts, "mask_smooth_ksize", 7),
+                iters=getattr(self.opts, "mask_smooth_iters", 1),
+            )
+            t_mask_dst_fuse = 1 - t_mask_src_fuse
+        print("bin_mean:", float(t_mask_src.mean()),
+            "fuse_mean:", float(t_mask_src_fuse.mean()),
+            "fuse_minmax:", float(t_mask_src_fuse.min()), float(t_mask_src_fuse.max()))
+        
         if w_guidance_dir is not None:
-            t_edited = decoder.synthesis(w_src-w_guidance_dir, self.c_front, noise_mode="const", return_triplanes=True)['planes']
-            t_mask_dst = 1
-            t_src = w_guidance_factor*(t_src - t_edited)            
-
-        man_fused_tp = t_mask_dst*t_dst + t_mask_src*t_src
+            t_edited = decoder.synthesis(
+                w_src - w_guidance_dir, self.c_front,
+                noise_mode="const", return_triplanes=True
+            )['planes']
+            t_mask_dst_fuse = 1
+            t_mask_dst = 1   # 返回值保持原逻辑
+            t_src = w_guidance_factor * (t_src - t_edited)
+        man_fused_tp = t_mask_dst_fuse * t_dst + t_mask_src_fuse * t_src
         return man_fused_tp, t_mask_src, t_mask_dst
 
     def forward_implicit_fusion(self, encoder, w_src, man_fused_tp=None, rec_fused_front=None):

@@ -30,3 +30,7 @@ __pycache__/
 *.exp
 *.obj
 build/
+out_*/
+__pycache__/
+checkpoints/
+**/debug_masks/
