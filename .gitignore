@@ -5,6 +5,14 @@ checkpoints/
 checkpoints/
 outputs/
 results/
+
+out/
+BROWS_EDITING.md
+TESTING_GUIDE.md
+MULTI_ATTRIBUTE_EDITING.md
+report.md
+report.pdf
+
 *.pkl
 *.pt
 *.pth

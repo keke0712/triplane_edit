@@ -438,6 +438,17 @@ class TriplaneEditingPipeline:
             M_dst = 1-dilated_src_tp_mask
             M_man = 0
             w_sr = w_dst
+        elif edit_label == 'brows':
+            man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                                                                              src_roi_ch=self.attribute_chs['brows'], dst_roi_ch=None,
+                                                                              smooth_tp=True, use_dst_mask_in_src=False, invert_src_mask=False, invert_dst_mask=False)
+            eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(t_mask_src, blur_k_size=7, morph_k_size=7, std_devs=(1.5,1.5))
+            
+            M_src = eroded_src_tp_mask
+            M_imp_mid = dilated_src_tp_mask-eroded_src_tp_mask
+            M_dst = 1-dilated_src_tp_mask
+            M_man = 0
+            w_sr = w_dst
         else:
             raise NotImplementedError
         
@@ -448,6 +459,172 @@ class TriplaneEditingPipeline:
         final_fused_tp = t_src*M_src+imp_fused_tp*M_imp_mid+t_dst*M_dst+man_fused_tp*M_man
 
         return w_sr, final_fused_tp
+    
+    def multi_attribute_edit(self, edit_labels, w_src, t_src, w_dst, t_dst):
+        """
+        Performs multi-attribute editing by combining multiple attribute edits using Parallel fusion.
+        
+        Args:
+            edit_labels: List of attribute labels to edit, e.g., ['eyes', 'brows', 'mouth']
+            w_src: Source W code
+            t_src: Source triplane
+            w_dst: Destination W code
+            t_dst: Destination triplane
+        
+        Returns:
+            w_fused: Fused W code
+            t_fused: Fused triplane
+        """
+        # Parallel fusion: combine all masks and apply once
+        print(f"Applying parallel fusion for: {', '.join(edit_labels)}")
+            
+        # Collect all edited triplanes and masks
+        edited_triplanes = []
+        all_M_src = []
+        all_M_dst = []
+        all_M_imp = []
+        all_M_man = []
+        
+        for edit_label in edit_labels:
+            # Get editing parameters for this attribute
+            if edit_label == 'hair':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['hair'], dst_roi_ch=self.attribute_chs['hair'],
+                    smooth_tp=True, invert_src_mask=True, invert_dst_mask=True, use_dst_mask_in_src=True
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=21, morph_k_size=11, std_devs=(11.0,11.0)
+                )
+                eroded_dst_tp_mask, dilated_dst_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_dst, blur_k_size=21, morph_k_size=11, std_devs=(11.0,11.0)
+                )
+                M_src = eroded_src_tp_mask
+                M_imp_mid = 1-(eroded_src_tp_mask+eroded_dst_tp_mask)
+                M_dst = eroded_dst_tp_mask
+                M_man = 0
+                
+            elif edit_label == 'glasses':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['glasses'], dst_roi_ch=None,
+                    smooth_tp=False, use_dst_mask_in_src=False, invert_src_mask=False, invert_dst_mask=False,
+                    w_guidance_dir=self.w_glasses, w_guidance_factor=1.5
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=31, morph_k_size=3, std_devs=(9.0,9.0)
+                )
+                M_src = 0
+                M_imp_mid = (dilated_src_tp_mask-eroded_src_tp_mask)
+                M_dst = 1-dilated_src_tp_mask
+                M_man = eroded_src_tp_mask
+                
+            elif edit_label == 'eyes':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['eyes'], dst_roi_ch=None,
+                    smooth_tp=True, use_dst_mask_in_src=False, invert_src_mask=False, invert_dst_mask=False
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=9, morph_k_size=11, std_devs=(2.0,2.0)
+                )
+                M_src = eroded_src_tp_mask
+                M_imp_mid = dilated_src_tp_mask-eroded_src_tp_mask
+                M_dst = 1-dilated_src_tp_mask
+                M_man = 0
+                
+            elif edit_label == 'mouth':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['mouth'], dst_roi_ch=None,
+                    smooth_tp=True, use_dst_mask_in_src=False, invert_src_mask=False, invert_dst_mask=False
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=21, morph_k_size=11, std_devs=(2.0,2.0)
+                )
+                M_src = eroded_src_tp_mask
+                M_imp_mid = dilated_src_tp_mask-eroded_src_tp_mask
+                M_dst = 1-dilated_src_tp_mask
+                M_man = 0
+                
+            elif edit_label == 'nose':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['nose'], dst_roi_ch=self.attribute_chs['eyes'],
+                    use_dst_mask_in_src=True, invert_src_mask=False, invert_dst_mask=True
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=21, morph_k_size=11, std_devs=(9.0,9.0)
+                )
+                M_src = 0
+                M_imp_mid = dilated_src_tp_mask
+                M_dst = 1-dilated_src_tp_mask
+                M_man = 0
+                
+            elif edit_label == 'brows':
+                man_fused_tp, t_mask_src, t_mask_dst = self.forward_manual_fusion(
+                    w_src, t_src, w_dst, t_dst, self.decoder, self.masking_net,
+                    src_roi_ch=self.attribute_chs['brows'], dst_roi_ch=None,
+                    smooth_tp=True, use_dst_mask_in_src=False, invert_src_mask=False, invert_dst_mask=False
+                )
+                eroded_src_tp_mask, dilated_src_tp_mask = self.create_dilated_eroded_tp_masks(
+                    t_mask_src, blur_k_size=7, morph_k_size=7, std_devs=(1.5,1.5)
+                )
+                M_src = eroded_src_tp_mask
+                M_imp_mid = dilated_src_tp_mask-eroded_src_tp_mask
+                M_dst = 1-dilated_src_tp_mask
+                M_man = 0
+            else:
+                raise NotImplementedError(f"Attribute {edit_label} not implemented")
+            
+            # Collect masks - ensure all are tensors (not int 0)
+            # Convert scalar 0 to zero tensor with same shape as other masks
+            if isinstance(M_src, int) and M_src == 0:
+                M_src = torch.zeros_like(M_dst if isinstance(M_dst, torch.Tensor) else M_imp_mid)
+            if isinstance(M_dst, int) and M_dst == 0:
+                M_dst = torch.zeros_like(M_src if isinstance(M_src, torch.Tensor) else M_imp_mid)
+            if isinstance(M_imp_mid, int) and M_imp_mid == 0:
+                M_imp_mid = torch.zeros_like(M_src if isinstance(M_src, torch.Tensor) else M_dst)
+            if isinstance(M_man, int) and M_man == 0:
+                M_man = torch.zeros_like(M_src if isinstance(M_src, torch.Tensor) else M_dst)
+            
+            all_M_src.append(M_src)
+            all_M_dst.append(M_dst)
+            all_M_imp.append(M_imp_mid)
+            all_M_man.append(M_man)
+        
+        # Combine masks: take maximum to avoid conflicts
+        combined_M_src = torch.max(torch.stack(all_M_src), dim=0)[0]
+        combined_M_dst = torch.max(torch.stack(all_M_dst), dim=0)[0]
+        combined_M_man = torch.max(torch.stack(all_M_man), dim=0)[0]
+        
+        # For implicit region: areas not covered by src or dst
+        combined_M_imp = 1 - (combined_M_src + combined_M_dst + combined_M_man)
+        combined_M_imp = torch.clamp(combined_M_imp, 0, 1)  # Ensure [0,1]
+        
+        # Normalize masks to sum to 1
+        mask_sum = combined_M_src + combined_M_dst + combined_M_imp + combined_M_man
+        combined_M_src = combined_M_src / (mask_sum + 1e-8)
+        combined_M_dst = combined_M_dst / (mask_sum + 1e-8)
+        combined_M_imp = combined_M_imp / (mask_sum + 1e-8)
+        combined_M_man = combined_M_man / (mask_sum + 1e-8)
+        
+        # Implicit fusion for transition regions
+        w_fused_front, imp_fused_tp = self.forward_implicit_fusion(
+            encoder=self.encoder_frozen, 
+            w_src=w_src, 
+            man_fused_tp=man_fused_tp  # Use last manual fusion
+        )
+        
+        # Final fusion with combined masks
+        final_fused_tp = (
+            t_src * combined_M_src + 
+            imp_fused_tp * combined_M_imp + 
+            t_dst * combined_M_dst + 
+            man_fused_tp * combined_M_man
+        )
+        
+        return w_dst, final_fused_tp
     
     def runtime_E_optim(self, img_256, img_512, c, iter_num=50):
         """
@@ -477,6 +654,11 @@ class TriplaneEditingPipeline:
     def edit_demo(self, input_base_dir, src_name, dst_name, edit_label, runtime_optim):
         """
         Performs reference-based edit, from src_name to dst_name with attribute edit_label.
+        Supports both single and multiple attribute editing.
+        
+        Args:
+            edit_label: Single attribute (e.g., 'eyes') or multiple (e.g., 'eyes,brows,mouth')
+        
         Returns concatenated source, destination, and edited PIL images.
         """
         ## Load imgs from paths and camera matrices from labels.json
@@ -504,12 +686,33 @@ class TriplaneEditingPipeline:
                                                  E1=self.encoder_frozen,
                                                  E2=E2_dst_tuned if runtime_optim else self.encoder_second_stage_frozen)
 
-        ## Editing
-        w_fused, t_fused = self.reference_tp_edit(edit_label=edit_label, 
-                                                  w_src=w_dst if edit_label == 'hair' else w_src, 
-                                                  t_src=t_dst if edit_label == 'hair' else t_src, 
-                                                  w_dst=w_src if edit_label == 'hair' else w_dst, 
-                                                  t_dst=t_src if edit_label == 'hair' else t_dst)
+        ## Editing - Support both single and multi-attribute
+        # Parse edit_label: can be single ('eyes') or multiple ('eyes,brows,mouth')
+        edit_labels = [label.strip() for label in edit_label.split(',')]
+        
+        if len(edit_labels) == 1:
+            # Single attribute editing
+            single_label = edit_labels[0]
+            print(f"Single attribute editing: {single_label}")
+            w_fused, t_fused = self.reference_tp_edit(
+                edit_label=single_label, 
+                w_src=w_dst if single_label == 'hair' else w_src, 
+                t_src=t_dst if single_label == 'hair' else t_src, 
+                w_dst=w_src if single_label == 'hair' else w_dst, 
+                t_dst=t_src if single_label == 'hair' else t_dst
+            )
+            label_str = single_label
+        else:
+            # Multi-attribute editing (always use Parallel strategy)
+            print(f"Multi-attribute editing: {', '.join(edit_labels)}")
+            w_fused, t_fused = self.multi_attribute_edit(
+                edit_labels=edit_labels,
+                w_src=w_src,
+                t_src=t_src,
+                w_dst=w_dst,
+                t_dst=t_dst
+            )
+            label_str = '+'.join(edit_labels)
         
         ## Rendering
         edited = self.synthesise_from_tp(input_w=w_fused, input_tp=t_fused, pose=c_dst, return_triplanes=False)['image']
@@ -526,5 +729,11 @@ class TriplaneEditingPipeline:
         # Row 1 : Src original, src encoded, dst original, dst encoded, edited image rendered from original pose
         # Row 2 : Edited from novel poses 
         all_renders = torch.cat([orig_pose_renders, novel_pose_renders], dim=-2)
-        torchvision.utils.save_image(all_renders, os.path.join(self.outdir,f'{src_name}_{dst_name}_{edit_label}.png'), normalize=True, value_range=(-1,1))
+        
+        # Save with appropriate filename
+        output_filename = f'{src_name}_{dst_name}_{label_str}.png'
+        
+        torchvision.utils.save_image(all_renders, os.path.join(self.outdir, output_filename), normalize=True, value_range=(-1,1))
+        print(f"Saved result to: {os.path.join(self.outdir, output_filename)}")
+        
         return torchvision.transforms.functional.to_pil_image(torch.clip(0.5*(all_renders+1).squeeze(),0,1))

@@ -21,7 +21,7 @@ def main():
     ap.add_argument("--input_base_dir", default="example")
     ap.add_argument("--src", required=True, help="e.g. 79.png")
     ap.add_argument("--dst", required=True, help="e.g. 40.png")
-    ap.add_argument("--label", required=True, help="eyes/hair/mouth/nose ...")
+    ap.add_argument("--label", required=True, help="Single: 'eyes' or Multiple: 'eyes,brows,mouth' (comma-separated)")
     ap.add_argument("--runtime_optim", action="store_true")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--outdir", default="out")
